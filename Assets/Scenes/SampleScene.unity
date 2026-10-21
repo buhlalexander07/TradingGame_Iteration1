@@ -290,6 +290,50 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &301519365
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 301519367}
+  - component: {fileID: 301519366}
+  m_Layer: 0
+  m_Name: InstructionScreen
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &301519366
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 301519365}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78caec9cdf14e4e918a8167513a77117, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: '::'
+--- !u!4 &301519367
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 301519365}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 1.63739, y: 0, z: 2.9651}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &312199128
 GameObject:
   m_ObjectHideFlags: 0
@@ -781,7 +825,7 @@ MonoBehaviour:
   hexSize: 1
   hexTilePrefab: {fileID: 1356538807061855543, guid: 54f80a33b24994eedab82e8c6c4e5a4c, type: 3}
   waterTilePrefab: {fileID: 0}
-  mapMask: ..........;..........;..WWWWWW..;W.....W...;.WWWWWWWW.;.WWWWWWWW.;....W....W
+  mapMask: ..........;..WWWWWW..;.WWWWWWWW.;WWWWW.W.WW;.WWWWWWWW.;.WWWWWWWWW;....W...WW
 --- !u!4 &2144661235
 Transform:
   m_ObjectHideFlags: 0
@@ -810,3 +854,4 @@ SceneRoots:
   - {fileID: 871074953}
   - {fileID: 1394470682}
   - {fileID: 262957913}
+  - {fileID: 301519367}
