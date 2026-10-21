@@ -18,6 +18,11 @@ public class HexGrid : MonoBehaviour
     [Header("Prefabs")]
     public GameObject hexTilePrefab;
 
+    [Header("Water")]
+    public GameObject waterTilePrefab;   // optional: separate mesh for water tiles
+    [TextArea(3, 6)]
+    public string mapMask = "";          // 7 rows of 10 chars, ';' separated. W = water, anything else = land
+
     public static HexGrid Instance { get; private set; }
 
     // Store tiles in a dictionary keyed by axial coords for O(1) lookup
@@ -25,6 +30,25 @@ public class HexGrid : MonoBehaviour
         new System.Collections.Generic.Dictionary<Vector2Int, GameObject>();
 
     public const float SQRT3 = 1.7320508f;
+
+    bool IsWater(int col, int row)
+    {
+        if (string.IsNullOrEmpty(mapMask)) return false;
+        string[] rows = mapMask.Split(';');
+        if (row >= rows.Length || col >= rows[row].Length) return false;
+        return char.ToUpper(rows[row][col]) == 'W';
+    }
+
+    /// <summary>True if a ship can occupy this hex: water tiles and city port tiles.</summary>
+    public bool IsTilePassable(Vector2Int coord)
+    {
+        if (!tiles.ContainsKey(coord)) return false;
+        // City hexes are ports — always passable
+        if (System.Array.Exists(GameData.Cities, c => c.coord == coord)) return true;
+        // Convert the axial trueR back to the on-screen mask row for this column
+        int maskRow = coord.y + Mathf.FloorToInt(coord.x / 2f);
+        return IsWater(coord.x, maskRow);
+    }
 
     void Awake()
     {
@@ -39,6 +63,7 @@ public class HexGrid : MonoBehaviour
 
     public void GenerateGrid()
     {
+        Debug.Log($"Mask length: {mapMask.Length}, rows: {mapMask.Split(';').Length}");
         // Clear any existing tiles
         foreach (var tile in tiles.Values)
             if (tile != null) Destroy(tile);
@@ -52,17 +77,34 @@ public class HexGrid : MonoBehaviour
 
             for (int r = 0; r < height; r++)
             {
-                Vector3 pos = AxialToWorld(q, r + rOffset);
-                GameObject tile = Instantiate(hexTilePrefab, pos, Quaternion.identity, transform);
-                tile.name = $"Hex_{q}_{r}";
+                int trueR = r + rOffset;
+                Vector3 pos = AxialToWorld(q, trueR);
 
-                // Scale the tile so adjacent tiles exactly touch.
-                // Assumes a default Unity cylinder (diameter 1) flattened
-                // by the prefab's own Y scale.
+                bool isWater = IsWater(q, r);   // NOTE: loop indices, not axial coords — the mask matches the on-screen rectangle
+                GameObject prefabToUse = (isWater && waterTilePrefab != null) ? waterTilePrefab : hexTilePrefab;
+                GameObject tile = Instantiate(prefabToUse, pos, Quaternion.identity, transform);
+                tile.name = isWater ? $"Water_{q}_{trueR}" : $"Hex_{q}_{trueR}";
+
+                if (isWater && waterTilePrefab == null)
+                {
+                    Renderer rend = tile.GetComponent<Renderer>();
+                    if (rend != null)
+                    {
+                        bool isCity = System.Array.Exists(GameData.Cities, c => c.coord == new Vector2Int(q, trueR));
+                        rend.material.color = isCity
+                            ? new Color(0.85f, 0.75f, 0.4f)   // sandy harbor gold — city ports read at a glance
+                            : new Color(0.25f, 0.45f, 0.7f);  // ocean blue
+                    }
+                }
+                else
+                {
+                    Renderer rend = tile.GetComponent<Renderer>();
+                    if (rend != null) rend.material.color = new Color(0.35f, 0.6f, 0.3f);   // land green
+                }
+
                 Vector3 scale = tile.transform.localScale;
                 tile.transform.localScale = new Vector3(SQRT3 * hexSize, scale.y, SQRT3 * hexSize);
-
-                tiles[new Vector2Int(q, r)] = tile;
+                tiles[new Vector2Int(q, trueR)] = tile;
             }
         }
     }
@@ -104,6 +146,7 @@ public class HexGrid : MonoBehaviour
 
         return new Vector2Int(rx, rz);
     }
+
 
     /// <summary>The 6 axial neighbor offsets (flat-top).</summary>
     public static readonly Vector2Int[] NeighborOffsets =
@@ -163,7 +206,7 @@ public class HexGrid : MonoBehaviour
             foreach (var offset in NeighborOffsets)
             {
                 Vector2Int next = current + offset;
-                if (IsValid(next) && !cameFrom.ContainsKey(next))
+                if (IsValid(next) && IsTilePassable(next) && !cameFrom.ContainsKey(next))
                 {
                     cameFrom[next] = current;
                     queue.Enqueue(next);

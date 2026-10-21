@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 /// <summary>
 /// Runtime game state: the player's gold, the turn counter, the fleet,
@@ -85,7 +86,7 @@ public static class GameState
         foreach (var n in HexGrid.NeighborOffsets)
         {
             Vector2Int c = center + n;
-            if (HexGrid.Instance.IsValid(c) && ShipAt(c) == null) return c;
+            if (HexGrid.Instance.IsValid(c) && HexGrid.Instance.IsTilePassable(c) && ShipAt(c) == null) return c;
         }
         return center; // caller checks occupancy again
     }
@@ -153,6 +154,7 @@ public class Ship : MonoBehaviour
 
     void Update()
     {
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(0)) return;
         if (isMoving) return;
         // Only one ship may handle input per frame — every ship runs Update(),
         // and without this guard each keypress fires once per ship in the fleet.
@@ -218,6 +220,12 @@ public class Ship : MonoBehaviour
         if (GameState.ShipAt(target) != null)
         {
             Debug.Log("One of your ships is already on that hex — no two ships share a tile.");
+            return;
+        }
+
+        if (!HexGrid.Instance.IsTilePassable(target))
+        {
+            Debug.Log("Ships can't sail over land — stay to the water, captain.");
             return;
         }
 
