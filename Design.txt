@@ -1,0 +1,14 @@
+This game is based upon a board game that I made in high school. You play as a 17th century charter 
+company which is trying to reach a certain amount of gold or elimate all other charter companies. 
+In this iteration, it is single player, so it focuses only on the reaching a gold goal. There are 
+many unique mechanics in the full game, but the main mechanic used in this prototype 
+is the city sales mechanic. When the player sells an item to a city, it is put in that city's 
+inventory. The city will pay a premium for resources that they do not have in their inventory and do 
+not produce. The city has a -80% buy rate for items that have just been sold to them, and that effect 
+reduces based on the number of turns and items that have passed since this city was sold that item. 
+This mechanic forces the player to travel around the map and interact with a lot of cities to find 
+the optimal world trading routes as opposed to just dumping all of their resources at one city. The 
+main inspiration behind the game way Civilization 6 and its naval troop and trader mechanics. In 
+that game, selling resources, trade routes, and naval units are all seperate features, but this game 
+intends to combine all of them into one. The prototype aims to make the player come up with their own 
+routing strategy by balancing what resources and ships they buy and where they sell to.
