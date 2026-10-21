@@ -249,13 +249,19 @@ public class Ship : MonoBehaviour
             if (step == coord) continue;
             Vector3 start = transform.position;
             Vector3 end = HexGrid.Instance.AxialToWorld(step.x, step.y);
+            Vector3 dir = (end - start).normalized;
+            Quaternion targetRot = dir != Vector3.zero
+                ? Quaternion.LookRotation(dir)
+                : transform.rotation;
             float t = 0f;
             while (t < 1f)
             {
                 t += Time.deltaTime * 6f;
                 transform.position = Vector3.Lerp(start, end, t);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, t);
                 yield return null;
             }
+            transform.rotation = targetRot;   // snap exactly at step end
             coord = step;
             remainingMovement--;
         }
