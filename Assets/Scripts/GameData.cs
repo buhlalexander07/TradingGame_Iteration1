@@ -3,8 +3,7 @@ using UnityEngine;
 
 /// <summary>
 /// All static game definitions for the prototype.
-/// Plain structs + one static class, per the build plan.
-/// Tunable after playtest — every number here is a placeholder.
+/// Tuned after the in-class playtest (see DESIGN.txt section 1).
 /// </summary>
 
 [System.Serializable]
@@ -61,8 +60,6 @@ public struct CityDef
 public static class GameData
 {
     // ---------- RESOURCES ----------
-    // The 8 city-produced resources + Fish (all continents) + 2 Caleana
-    // manufactured goods. 11 total — full 28 waits for the full game.
     public static readonly ResourceDef[] Resources =
     {
         new ResourceDef("Wheat",    2, "Crop"),
@@ -87,13 +84,14 @@ public static class GameData
     }
 
     // ---------- SHIPS ----------
-    // Retuned stats from design: 5/4/4 movement, larger ships can
-    // (just) catch smaller ones. Health is tracked on defense per rules doc.
+    // Playtest change: Sloop 10g -> 8g (an 8g ship repays in roughly two
+    // round trips against the 30g target), movement 5 -> 7 (testers said
+    // "the limited movement" was the most frustrating thing after prices).
     public static readonly ShipDef[] Ships =
     {
-        new ShipDef("Sloop",    1, 2, 5, 2, 10),
-        new ShipDef("Caravel",  2, 4, 4, 4, 15),
-        new ShipDef("Galleon",  4, 6, 4, 6, 20),
+        new ShipDef("Sloop",   1, 2, 7, 3, 8),
+        new ShipDef("Caravel", 2, 4, 5, 5, 14),
+        new ShipDef("Galleon", 4, 6, 5, 8, 20),
     };
 
     public static ShipDef GetShip(string name)
@@ -105,8 +103,6 @@ public static class GameData
     }
 
     // ---------- CITIES ----------
-    // One city per continent-equivalent, 2 produced resources each.
-    // Coords assume a 10x7 grid — adjust if you change grid size.
     public static readonly CityDef[] Cities =
     {
         new CityDef("Caleana",  new Vector2Int(0, 3), new[] { "Wheat", "Cattle" }),
@@ -116,9 +112,29 @@ public static class GameData
     };
 
     // ---------- ECONOMY TUNING ----------
-    public const float PREMIUM_MULTIPLIER = 1.5f;  // city pays +50% for goods it doesn't produce
+    public const float PREMIUM_MULTIPLIER = 1.5f;   // city pays +50% for goods it doesn't produce
     public const float PRODUCTION_DISCOUNT = 0.5f; // city pays half for what it produces itself
-    public const float SELL_MARKUP = 1.25f;        // city charges +25% over its buy price when selling to you
+    public const float SELL_MARKUP = 1.25f;        // city charges +25% over its buy price
     public const int SALES_LOG_SIZE = 8;           // FIFO log length per city
-}
 
+    public const int STARTING_GOLD = 12;
+    // Playtest change: 200g -> 30g. Two of four testers said the target was
+    // too big, and 30g keeps a full run inside 20-30 turns.
+    // Later raised 30g -> 100g: the auto-ship system needs a long enough run
+    // for a fleet to pay back its purchase costs and for route saturation to
+    // be visible as decay rather than a single crash.
+    public const int TARGET_GOLD = 100;
+
+    /// <summary>
+    /// Saturation penalty by FIFO-log position, newest first.
+    /// Playtest change: newest sale used to be -80% ("resources lose value
+    /// too fast"). Softened to -50% and the curve flattened.
+    /// </summary>
+    public static readonly float[] SaturationPenalties =
+    {
+        0.50f, 0.35f, 0.25f, 0.17f, 0.11f, 0.07f, 0.03f, 0f
+    };
+
+    /// <summary>No price ever drops below this (gold).</summary>
+    public const int PRICE_FLOOR = 1;
+}

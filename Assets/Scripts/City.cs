@@ -5,12 +5,11 @@ using UnityEngine;
 /// Runtime city state: inventory log (FIFO saturation), price calculation.
 /// The star mechanic of the prototype.
 ///
-/// Saturation model (locked in design):
+/// Saturation model:
 /// - FIFO log of the last 8 sales, newest-first.
-/// - Penalty by position: pos 1 = -80%, decaying stepwise toward 0% at pos 8.
-/// - Each turn, every entry shifts one position deeper.
-/// - Selling more of the same good: the newest matching entry moves to the
-///   front; additional units stack behind it.
+/// - Penalty by position: pos 0 = -50%, decaying stepwise toward 0% at pos 7.
+/// - Each turn every entry shifts one position deeper (price recovers).
+/// - Selling the same good again moves that entry back to the front.
 /// </summary>
 public class City
 {
@@ -36,34 +35,53 @@ public class City
     /// </summary>
     public int GetBuyPrice(string resourceName)
     {
+        float price = GetUnsaturatedPrice(resourceName);
+        price *= (1f - GetSaturationPenalty(resourceName));
+        return Mathf.Max(GameData.PRICE_FLOOR, Mathf.RoundToInt(price));
+    }
+
+    /// <summary>
+    /// The reference price for a resource here, with NO saturation penalty
+    /// applied. Used for the price preview so the player can see what the
+    /// market "should" be paying and what their own dumping has done to it.
+    /// </summary>
+    public int GetUnsaturatedPrice(string resourceName)
+    {
         ResourceDef def = GameData.GetResource(resourceName);
         float price = def.basePrice;
 
-        // Production logic: city pays less for what it makes,
-        // more for what it lacks.
+        // Production logic: city pays less for what it makes, more for what it lacks.
         if (System.Array.IndexOf(produces, resourceName) >= 0)
             price *= GameData.PRODUCTION_DISCOUNT;
         else
             price *= GameData.PREMIUM_MULTIPLIER;
 
-        // Saturation penalty from the newest matching log entry.
-        float penalty = GetSaturationPenalty(resourceName);
-        price *= (1f - penalty);
+        return Mathf.Max(GameData.PRICE_FLOOR, Mathf.RoundToInt(price));
+    }
 
-        return Mathf.Max(1, Mathf.RoundToInt(price));
+    /// <summary>
+    /// What the city would pay for the NEXT unit you sell here — i.e. the
+    /// price AFTER this sale lands at the front of the log. This is the
+    /// "sell preview" shown in the trade panel.
+    /// </summary>
+    public int GetBuyPriceAfterSale(string resourceName)
+    {
+        float price = GetUnsaturatedPrice(resourceName);
+        price *= (1f - GameData.SaturationPenalties[0]);
+        return Mathf.Max(GameData.PRICE_FLOOR, Mathf.RoundToInt(price));
     }
 
     /// <summary>
     /// The price the city charges the player for one unit of a resource
-    /// (what YOU pay when you BUY from the city).
+    /// (what YOU pay when you BUY from the city). Buying never changes the
+    /// saturation log — only selling does.
     /// </summary>
     public int GetSellPriceToPlayer(string resourceName)
     {
-        // City charges a markup over what it would pay.
-        return Mathf.Max(1, Mathf.RoundToInt(GetBuyPrice(resourceName) * GameData.SELL_MARKUP));
+        return Mathf.Max(GameData.PRICE_FLOOR, Mathf.RoundToInt(GetBuyPrice(resourceName) * GameData.SELL_MARKUP));
     }
 
-    /// <summary>Penalty (0..0.8) from the newest matching entry, or 0 if none.</summary>
+    /// <summary>Penalty (0..0.5) from the newest matching log entry, or 0 if none.</summary>
     public float GetSaturationPenalty(string resourceName)
     {
         for (int i = 0; i < salesLog.Count; i++)
@@ -74,21 +92,30 @@ public class City
         return 0f;
     }
 
-    // Position-weighted penalties, newest (index 0) = -80%.
-    // Falls to 0 once the entry is pushed past the log end.
+    // Position-weighted penalties, newest (index 0) = -50%.
     private float PenaltyForPosition(int index)
     {
-        switch (index)
-        {
-            case 0: return 0.80f;
-            case 1: return 0.60f;
-            case 2: return 0.45f;
-            case 3: return 0.30f;
-            case 4: return 0.20f;
-            case 5: return 0.10f;
-            case 6: return 0.05f;
-            default: return 0f;
-        }
+        if (index < 0 || index >= GameData.SaturationPenalties.Length) return 0f;
+        return GameData.SaturationPenalties[index];
+    }
+
+    // ---------- PRODUCTION RULES ----------
+
+    /// <summary>Does this city produce the given resource?</summary>
+    public bool Produces(string resourceName)
+    {
+        return System.Array.IndexOf(produces, resourceName) >= 0;
+    }
+
+    /// <summary>
+    /// A city only buys what it does NOT produce. Selling a resource the
+    /// city grows is refused outright: the city has no use for it, and
+    /// allowing it would let a player dump surplus goods on the very city
+    /// that grows them, skipping the cross-city trade the game is about.
+    /// </summary>
+    public bool CanSellTo(string resourceName)
+    {
+        return !Produces(resourceName);
     }
 
     // ---------- SELLING / LOG MAINTENANCE ----------
@@ -100,6 +127,9 @@ public class City
     /// </summary>
     public int PlayerSells(string resourceName, int quantity)
     {
+        // Refuse goods the city produces: no sale, no gold, no log entry.
+        if (!CanSellTo(resourceName) || quantity <= 0) return 0;
+
         int total = 0;
         for (int i = 0; i < quantity; i++)
         {
@@ -113,7 +143,7 @@ public class City
     private void PushSale(string resourceName)
     {
         salesLog.Remove(resourceName);          // move existing entry to front if present
-        salesLog.Insert(0, resourceName);      // newest first
+        salesLog.Insert(0, resourceName);        // newest first
         while (salesLog.Count > GameData.SALES_LOG_SIZE)
             salesLog.RemoveAt(salesLog.Count - 1); // oldest falls off = fully recovered
     }
@@ -129,6 +159,12 @@ public class City
             salesLog.RemoveAt(salesLog.Count - 1);
     }
 
+    /// <summary>Clear the log (used by the in-place restart).</summary>
+    public void ResetLog()
+    {
+        salesLog.Clear();
+    }
+
     /// <summary>Read-only view of the log for UI (index 0 = newest). Nulls are aged slots.</summary>
     public List<string> GetSalesLog() => new List<string>(salesLog);
 
@@ -141,4 +177,3 @@ public class City
         return sb.ToString();
     }
 }
-

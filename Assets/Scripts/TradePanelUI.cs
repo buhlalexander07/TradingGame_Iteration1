@@ -9,9 +9,20 @@ using UnityEngine.EventSystems;
 /// Shows when the selected ship is docked at a city:
 ///  - every resource with live prices (what the city pays you / charges you)
 ///  - saturation indicator (▼ penalty %) so the mechanic is visible
+///  - the SELL PREVIEW: what you get now vs. what the next unit would fetch
 ///  - the city's FIFO sales log
-///  - ship purchase buttons (replaces the 1/2/3 debug keys)
-/// Plus always-on-screen: gold/turn/cargo readout and an End Turn button.
+///  - ship purchase buttons
+/// Plus always-on-screen: gold/turn/cargo readout, the goal line, and End Turn.
+///
+/// Playtest changes in this file:
+///  - Added the goal readout (testers were uniformly unclear what to do).
+///  - Added the sell preview (testers saw prices move but did not plan
+///    around them — the price had to be stated before the button).
+///  - Fixed the log label: it said "RECENTLY BOUGHT" but the log records SALES.
+///  - A city will not buy a resource it grows itself (rule enforced in City.cs).
+///  - Exactly one EventSystem is enforced here (duplicates break click routing).
+///  - CanvasScaler fully qualified: the bare name resolves to
+///    UnityEngine.UIElements.CanvasScaler in Unity 6 and fails to compile.
 /// </summary>
 public class TradePanelUI : MonoBehaviour
 {
@@ -19,6 +30,7 @@ public class TradePanelUI : MonoBehaviour
     private GameObject panel;
     private Text headerText;
     private Text statsText;
+    private Text goalText;
     private Text logText;
 
     private class ResourceRow
@@ -62,10 +74,30 @@ public class TradePanelUI : MonoBehaviour
         return f;
     }
 
+    /// <summary>
+    /// There must be EXACTLY ONE EventSystem in the scene. Two of them each
+    /// process input every frame, so which one wins is arbitrary — that is a
+    /// classic cause of "the button only works sometimes".
+    /// </summary>
     private static void EnsureEventSystem()
     {
-        if (Object.FindFirstObjectByType<EventSystem>() != null) return;
-        new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+        EventSystem[] all = Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None);
+
+        if (all.Length == 0)
+        {
+            new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+            return;
+        }
+
+        EventSystem keep = all[0];
+        if (keep.GetComponent<BaseInputModule>() == null)
+            keep.gameObject.AddComponent<StandaloneInputModule>();
+
+        for (int i = 1; i < all.Length; i++)
+        {
+            if (all[i] == null || all[i] == keep) continue;
+            Object.Destroy(all[i].gameObject);
+        }
     }
 
     private Text MakeText(Transform parent, string text, int size, Vector2 anchorMin, Vector2 anchorMax,
@@ -79,7 +111,7 @@ public class TradePanelUI : MonoBehaviour
         t.color = Color.white;
         t.alignment = align;
         t.raycastTarget = false; // texts must never eat button clicks
-        RectTransform rt = t.rectTransform;
+        RectTransform rt = t.GetComponent<RectTransform>();
         rt.SetParent(parent, false);
         rt.anchorMin = anchorMin;
         rt.anchorMax = anchorMax;
@@ -111,7 +143,7 @@ public class TradePanelUI : MonoBehaviour
         t.alignment = TextAnchor.MiddleCenter;
         t.color = Color.white;
         t.raycastTarget = false; // the button's Image handles the raycast
-        RectTransform lrt = t.rectTransform;
+        RectTransform lrt = lbl.GetComponent<RectTransform>();
         lrt.SetParent(rt, false);
         lrt.anchorMin = Vector2.zero;
         lrt.anchorMax = Vector2.one;
@@ -129,14 +161,19 @@ public class TradePanelUI : MonoBehaviour
         canvas = canvasGo.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvasGo.AddComponent<GraphicRaycaster>(); // REQUIRED for button clicks to register
-        CanvasScaler scaler = canvasGo.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        UnityEngine.UI.CanvasScaler scaler = canvasGo.AddComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
         scaler.matchWidthOrHeight = 0.5f;
 
         // ---- Always-on HUD: stats top-left, End Turn top-right ----
         statsText = MakeText(canvas.transform, "", 15,
             new Vector2(0, 1), new Vector2(0, 1), new Vector2(12, -34), new Vector2(560, -8), TextAnchor.MiddleLeft);
+
+        // The goal line — the single clearest playtest fix.
+        goalText = MakeText(canvas.transform, "", 17,
+            new Vector2(0, 1), new Vector2(0, 1), new Vector2(12, -60), new Vector2(700, -36), TextAnchor.MiddleLeft);
+        goalText.color = new Color(0.95f, 0.85f, 0.45f);
 
         MakeButton(canvas.transform, "End Turn (Space)",
             new Vector2(1, 1), new Vector2(-110, -30), new Vector2(200, 36),
@@ -146,13 +183,13 @@ public class TradePanelUI : MonoBehaviour
         panel = new GameObject("DockedPanel", typeof(Image));
         Image pimg = panel.GetComponent<Image>();
         pimg.color = new Color(0, 0, 0, 0.88f);
-        RectTransform prt = panel.GetComponent<RectTransform>();
+        RectTransform prt = pimg.rectTransform;
         prt.SetParent(canvas.transform, false);
         prt.anchorMin = new Vector2(0, 0.5f);
         prt.anchorMax = new Vector2(0, 0.5f);
         prt.pivot = new Vector2(0, 0.5f);
         prt.anchoredPosition = new Vector2(10, 0);
-        prt.sizeDelta = new Vector2(470, 660);
+        prt.sizeDelta = new Vector2(540, 700);
         panel.SetActive(false);
 
         // Header
@@ -160,8 +197,9 @@ public class TradePanelUI : MonoBehaviour
             new Vector2(0, 1), new Vector2(1, 1), new Vector2(12, -36), new Vector2(-12, -8), TextAnchor.MiddleLeft);
 
         // Column headers
-        MakeText(panel.transform, "GOOD", 12, new Vector2(0, 1), new Vector2(0, 1), new Vector2(12, -58), new Vector2(120, -40), TextAnchor.MiddleLeft);
-        MakeText(panel.transform, "CITY PAYS YOU | CITY SELLS", 12, new Vector2(0, 1), new Vector2(0, 1), new Vector2(125, -58), new Vector2(370, -40), TextAnchor.MiddleLeft);
+        MakeText(panel.transform, "GOOD", 12, new Vector2(0, 1), new Vector2(0, 1), new Vector2(12, -58), new Vector2(110, -40), TextAnchor.MiddleLeft);
+        MakeText(panel.transform, "PAYS | SELLS", 12, new Vector2(0, 1), new Vector2(0, 1), new Vector2(115, -58), new Vector2(235, -40), TextAnchor.MiddleLeft);
+        MakeText(panel.transform, "SELL PREVIEW", 12, new Vector2(0, 1), new Vector2(0, 1), new Vector2(240, -58), new Vector2(360, -40), TextAnchor.MiddleLeft);
 
         // One row per resource
         float y = 66;
@@ -170,18 +208,18 @@ public class TradePanelUI : MonoBehaviour
             var row = new ResourceRow { def = res };
 
             row.nameText = MakeText(panel.transform, res.name, 14,
-                new Vector2(0, 1), new Vector2(0, 1), new Vector2(12, -y - 22), new Vector2(125, -y), TextAnchor.MiddleLeft);
+                new Vector2(0, 1), new Vector2(0, 1), new Vector2(12, -y - 22), new Vector2(110, -y), TextAnchor.MiddleLeft);
 
             row.priceText = MakeText(panel.transform, "", 14,
-                new Vector2(0, 1), new Vector2(0, 1), new Vector2(125, -y - 22), new Vector2(270, -y), TextAnchor.MiddleLeft);
+                new Vector2(0, 1), new Vector2(0, 1), new Vector2(115, -y - 22), new Vector2(235, -y), TextAnchor.MiddleLeft);
 
-            row.satText = MakeText(panel.transform, "", 13,
-                new Vector2(0, 1), new Vector2(0, 1), new Vector2(270, -y - 22), new Vector2(372, -y), TextAnchor.MiddleLeft);
+            row.satText = MakeText(panel.transform, "", 12,
+                new Vector2(0, 1), new Vector2(0, 1), new Vector2(240, -y - 22), new Vector2(360, -y), TextAnchor.MiddleLeft);
 
             row.sellButton = MakeButton(panel.transform, "SELL",
-                new Vector2(0, 1), new Vector2(376, -y - 11), new Vector2(42, 20), null);
+                new Vector2(0, 1), new Vector2(368, -y - 11), new Vector2(58, 20), null);
             row.buyButton = MakeButton(panel.transform, "BUY",
-                new Vector2(0, 1), new Vector2(422, -y - 11), new Vector2(42, 20), null);
+                new Vector2(0, 1), new Vector2(432, -y - 11), new Vector2(58, 20), null);
 
             string r = res.name; // capture for the closure
             row.sellButton.onClick.AddListener(() => SellOne(r));
@@ -195,26 +233,28 @@ public class TradePanelUI : MonoBehaviour
         MakeText(panel.transform, "BUY SHIPS", 12,
             new Vector2(0, 1), new Vector2(0, 1), new Vector2(12, -y - 18), new Vector2(200, -y), TextAnchor.MiddleLeft);
         y += 22;
-        float bx = 85; 
+        float bx = 85;
         foreach (var sd in GameData.Ships)
         {
             var sr = new ShipRow { def = sd };
             sr.button = MakeButton(panel.transform, $"{sd.name} {sd.cost}g",
-                new Vector2(0, 1), new Vector2(bx, -y - 12), new Vector2(145, 24), null);
+                new Vector2(0, 1), new Vector2(bx, -y - 12), new Vector2(150, 24), null);
             string s = sd.name; // capture for the closure
             sr.button.onClick.AddListener(() =>
             {
                 Ship sel = GameState.selected;
-                if (sel != null) GameState.BuyShip(s, sel.coord, Ship.prefab);
+                if (sel == null) return;
+                Ship bought = GameState.BuyShip(s, sel.coord, Ship.prefab);
+                if (bought != null) bought.boughtThisRun = true;
             });
             sr.label = sr.button.GetComponentInChildren<Text>();
             shipRows.Add(sr);
-            bx += 150;
+            bx += 155;
         }
         y += 34;
 
         // Saturation log
-        MakeText(panel.transform, "RECENTLY BOUGHT (newest first — prices recover as entries age):", 11,
+        MakeText(panel.transform, "RECENT SALES HERE (newest first — prices recover as entries age):", 11,
             new Vector2(0, 1), new Vector2(0, 1), new Vector2(12, -y - 16), new Vector2(-12, -y), TextAnchor.MiddleLeft);
         y += 18;
         logText = MakeText(panel.transform, "", 12,
@@ -229,6 +269,11 @@ public class TradePanelUI : MonoBehaviour
         City city = s != null ? GameState.CityAt(s.coord) : null;
         if (s == null || city == null) return;
         if (!s.cargo.Contains(resource)) { Debug.Log($"No {resource} in the hold."); return; }
+        if (!city.CanSellTo(resource))
+        {
+            Debug.Log($"{city.name} grows {resource} — it won't buy its own goods.");
+            return;
+        }
 
         int earned = city.PlayerSells(resource, 1);
         s.cargo.Remove(resource);
@@ -267,7 +312,14 @@ public class TradePanelUI : MonoBehaviour
         // HUD always visible
         int storage = s != null ? s.def.storage : 0;
         statsText.text = $"Turn {GameState.turn}    Gold: {GameState.gold}g    Cargo: {(s != null ? s.cargo.Count : 0)}/{storage}" +
-                         (s != null ? $"    Move: {s.remainingMovement}/{s.def.movement}" : "");
+                         (s != null ? $"    Move: {s.remainingMovement}/{s.def.movement}" : "") +
+                         (s != null && s.isAuto ? "    [AUTO]" : "");
+
+        // The goal — always visible, always spelled out.
+        int goal = GameData.TARGET_GOLD;
+        int remaining = Mathf.Max(0, goal - GameState.gold);
+        goalText.text = $"GOAL: reach {goal}g gold  ({GameState.gold}/{goal}, {remaining} to go)  " +
+                        $"— fewer turns is a better score.";
 
         // Docked panel only when docked
         bool docked = city != null;
@@ -290,23 +342,23 @@ public class TradePanelUI : MonoBehaviour
 
             row.priceText.text = $"{cityPays}g | {citySells}g";
 
+            // Sell preview: what this unit fetches now, and what the NEXT
+            // unit would fetch after this sale lands at the front of the log.
+            int after = city.GetBuyPriceAfterSale(r);
             if (penalty > 0f)
             {
-                row.satText.text = $"▼ -{penalty:P0}";
+                row.satText.text = $"{cityPays}g → {after}g";
                 row.satText.color = new Color(1f, 0.45f, 0.35f);
-            }
-            else if (produces)
-            {
-                row.satText.text = "produces";
-                row.satText.color = new Color(0.6f, 0.75f, 1f);
             }
             else
             {
-                row.satText.text = "premium";
-                row.satText.color = new Color(0.55f, 1f, 0.55f);
+                row.satText.text = produces ? "grows it - no sell" : "premium";
+                row.satText.color = produces
+                    ? new Color(0.6f, 0.75f, 1f)
+                    : new Color(0.55f, 1f, 0.55f);
             }
 
-            row.sellButton.interactable = inHold > 0;
+            row.sellButton.interactable = inHold > 0 && !produces;
             row.buyButton.interactable = produces && GameState.gold >= citySells && s.cargo.Count < s.def.storage;
         }
 
@@ -318,4 +370,3 @@ public class TradePanelUI : MonoBehaviour
         logText.text = city.DebugLog();
     }
 }
-

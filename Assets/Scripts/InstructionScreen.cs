@@ -3,22 +3,39 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 
 /// <summary>
-/// Instruction screen: shows the rules before the first turn, then removes itself.
-/// Setup: empty GameObject named "InstructionScreen" with this component. Nothing else.
-/// Blocks all map clicks until dismissed (fullscreen raycast blocker).
+/// Instruction screen: shows the rules before the first turn, then can be
+/// re-opened at any time by pressing I (playtest fix — two of four testers
+/// asked for the instructions to be available while playing).
+///
+/// NOTE: the help key is I, NOT H. H is the HOLD key (a ship skips the
+/// turn), and both scripts read the keyboard, so sharing the key toggled
+/// the ship and the screen at the same time.
+///
+/// Setup: empty GameObject named "InstructionScreen" with this component.
+/// Blocks all map clicks while open (fullscreen raycast blocker).
 /// </summary>
 public class InstructionScreen : MonoBehaviour
 {
     private GameObject root;
-
-    private static Font BuiltinFont()
-    {
-        return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-    }
+    private Canvas canvas;
 
     void Start()
     {
         BuildScreen();
+    }
+
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.I))
+        {
+            if (root != null && root.activeSelf) CloseScreen();
+            else ShowScreen();
+        }
+    }
+
+    private static Font BuiltinFont()
+    {
+        return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
     }
 
     void BuildScreen()
@@ -29,8 +46,8 @@ public class InstructionScreen : MonoBehaviour
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 200; // above everything
         canvasGo.AddComponent<GraphicRaycaster>();
-        CanvasScaler scaler = canvasGo.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        UnityEngine.UI.CanvasScaler scaler = canvasGo.AddComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
         scaler.matchWidthOrHeight = 0.5f;
 
@@ -50,61 +67,83 @@ public class InstructionScreen : MonoBehaviour
         Image panelImg = panelGo.AddComponent<Image>();
         panelImg.color = new Color(0.12f, 0.12f, 0.14f, 0.98f);
         RectTransform prt = panelImg.rectTransform;
-        prt.sizeDelta = new Vector2(900, 780);
+        prt.sizeDelta = new Vector2(1000, 880);
         Stretch(prt);
 
         // Title
         Text title = MakeText(panelGo.transform, "Trading Game", 42, FontStyle.Bold,
-            new Vector2(0, 330), new Vector2(840, 70));
+            new Vector2(0, 390), new Vector2(940, 70));
         title.alignment = TextAnchor.MiddleCenter;
         title.color = new Color(0.95f, 0.85f, 0.55f);
 
         // Body
         Text body = MakeText(panelGo.transform,
-            "You command a small trading charter. Turn your 12 gold into 200 gold as fast as you can.\n\n" +
+            "GOAL: turn your 12 gold into 100 gold. Fewer turns = a better score.\n\n" +
             "YOUR TURN\n" +
-            "  - Move your ship (up to 5 hexes for a Sloop), then trade freely at any city you dock at.\n" +
-            "  - Click a ship to select it, then click a hex to sail there. TAB cycles ships, SPACE ends the turn.\n" +
-            "  - Ships can only sail on water (blue) and city ports (gold) - never over land (green).\n\n" +
+            "  - Click a ship to select it, then click a hex to sail there. A Sloop sails up to 7 hexes.\n" +
+            "  - TAB cycles ships. SPACE ends the turn.\n" +
+            "  - Ships sail on water (blue) and city ports (gold) - never over land (green).\n" +
+            "  - You may trade as much as you like while docked at a city.\n\n" +
             "TRADING\n" +
-            "  - Each city SHOWS live prices: what it pays you | what it charges you.\n" +
-            "  - You can only BUY goods a city produces (the 'produces' tag). You can SELL anything, anywhere.\n" +
-            "  - Cities pay a PREMIUM for goods they don't produce - that's where the money is.\n\n" +
+            "  - BUY only what a city grows (the 'produces' tag).\n" +
+            "  - A city will NOT buy what it grows itself. Sell it somewhere else - that is the whole game.\n" +
+            "  - Cities pay a 50% PREMIUM for goods they don't grow. That is where the money is.\n\n" +
             "THE MARKET REMEMBERS\n" +
-            "  - Every sale is logged. Dump the same good in one city and its price CRASHES (red arrow),\n" +
-            "    recovering a little each turn. Rotate goods and routes - your own success ruins your best run.\n\n" +
+            "  - Every SALE is logged in that city (the last 8 sales). Sell the same good twice in one\n" +
+            "    city and its price CRASHES - the newest sale costs you 50%.\n" +
+            "  - Each turn the log ages one step and prices recover.\n" +
+            "  - The SELL PREVIEW column shows what you get now and what the next unit would fetch.\n" +
+            "  - Rotate goods - your own success ruins your best run.\n\n" +
+            "AUTOMATIC SAILING\n" +
+            "  - Select a ship, press R, then click a CITY. That ship will sail there on its own.\n" +
+            "  - It uses all its movement every turn until it arrives" +
+            "  - The moment it ARRIVES, automatic mode turns off and you have the helm again.\n" +
+            "  - A ship on automatic never blocks ending the turn.\n" +
+            "  - Press C to cancel a voyage and take the wheel back early.\n\n" +
+            "HOLDING\n" +
+            "  - Press H to tell a ship to skip the turn. It sits out and will not block ending the turn.\n\n" +
+            "ENDING THE TURN\n" +
+            "  - You cannot end the turn while a ship still has movement, unless that ship is\n" +
+            "    automatic or holding. If it is blocked, you can hold the ships and end the turn anyway.\n\n" +
             "GROWING\n" +
-            "  - While docked, buy ships: Sloop 10g (fast), Caravel 15g, Galleon 20g (big hold).\n" +
-            "  - New ships cannot move the turn they are purchased. Click a city's gold hex to dock.",
-            24, FontStyle.Normal, new Vector2(0, -10), new Vector2(840, 620));
+            "  - While docked, buy ships: Sloop 8g (7 hexes, holds 3), Caravel 14g (5 hexes, holds 5),\n" +
+            "    Galleon 20g (5 hexes, holds 8).\n" +
+            "  - A new ship cannot move the turn it is bought. A second ship runs a second route -\n" +
+            "    but watch the income: a ship selling the same good every trip wears its market out.\n\n" +
+            "F1 opens and closes this screen at any time.",
+            19, FontStyle.Normal, new Vector2(0, -8), new Vector2(940, 740));
         body.alignment = TextAnchor.UpperLeft;
         body.color = new Color(0.9f, 0.9f, 0.9f);
 
         // Set Sail button
-        Button start = MakeButton(panelGo.transform, "SET SAIL", new Vector2(0, -330), new Vector2(300, 70), SetSail);
+        Button start = MakeButton(panelGo.transform, "SET SAIL", new Vector2(0, -395), new Vector2(300, 66), SetSail);
         var st = start.GetComponentInChildren<Text>();
-        if (st != null) st.fontSize = 30;
+        if (st != null) st.fontSize = 28;
+    }
+
+    void ShowScreen()
+    {
+        if (root != null) root.SetActive(true);
+    }
+
+    void CloseScreen()
+    {
+        if (root != null) root.SetActive(false);
     }
 
     void SetSail()
     {
         Debug.Log("Instructions dismissed - set sail Captain.");
-        Destroy(root);
-        Destroy(gameObject); // remove this component too; the game proceeds
+        CloseScreen();
+        // The component stays alive so F1 can reopen the screen later.
     }
 
     // ---------- helpers (same patterns as TradePanelUI) ----------
 
-    private Canvas canvas;
-
     void EnsureEventSystem()
     {
-        if (FindFirstObjectByType<EventSystem>() == null)
-        {
-            GameObject es = new GameObject("EventSystem");
-            es.AddComponent<EventSystem>();
-            es.AddComponent<StandaloneInputModule>();
-        }
+        // There must be EXACTLY ONE EventSystem in the scene.
+        UiEventSystem.EnsureExactlyOne();
     }
 
     Text MakeText(Transform parent, string content, int size, FontStyle style, Vector2 pos, Vector2 sizeDelta)
@@ -148,4 +187,3 @@ public class InstructionScreen : MonoBehaviour
         rt.offsetMax = Vector2.zero;
     }
 }
-
